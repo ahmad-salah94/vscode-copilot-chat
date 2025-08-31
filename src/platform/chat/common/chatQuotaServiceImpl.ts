@@ -63,8 +63,8 @@ export class ChatQuotaService extends Disposable implements IChatQuotaService {
 				resetDate.setMonth(resetDate.getMonth() + 1);
 			}
 
-			// Calculate used based on entitlement and remaining
-			const used = Math.max(0, entitlement * (1 - percentRemaining / 100));
+			// Calculate used based on entitlement and remaining, accounting for quota period resets
+			const used = this.calculateUsedQuota(entitlement, percentRemaining, resetDate);
 
 			// Update quota info
 			this._quotaInfo = {
@@ -84,13 +84,50 @@ export class ChatQuotaService extends Disposable implements IChatQuotaService {
 		if (!quotaInfo || !quotaInfo.quota_snapshots || !quotaInfo.quota_reset_date) {
 			return;
 		}
+		
+		const resetDate = new Date(quotaInfo.quota_reset_date);
+		const entitlement = quotaInfo.quota_snapshots.premium_interactions.entitlement;
+		const percentRemaining = quotaInfo.quota_snapshots.premium_interactions.percent_remaining;
+		
+		// Calculate used quota, accounting for quota period resets
+		const used = this.calculateUsedQuota(entitlement, percentRemaining, resetDate);
+		
 		this._quotaInfo = {
 			unlimited: quotaInfo.quota_snapshots.premium_interactions.unlimited,
 			overageEnabled: quotaInfo.quota_snapshots.premium_interactions.overage_permitted,
 			overageUsed: quotaInfo.quota_snapshots.premium_interactions.overage_count,
-			quota: quotaInfo.quota_snapshots.premium_interactions.entitlement,
-			resetDate: new Date(quotaInfo.quota_reset_date),
-			used: Math.max(0, quotaInfo.quota_snapshots.premium_interactions.entitlement * (1 - quotaInfo.quota_snapshots.premium_interactions.percent_remaining / 100)),
+			quota: entitlement,
+			resetDate,
+			used,
 		};
+	}
+
+	/**
+	 * Calculate used quota, accounting for quota period resets due to timezone differences.
+	 * If the current time has passed the reset date, and the percent_remaining suggests
+	 * usage from a previous period, adjust the calculation accordingly.
+	 */
+	private calculateUsedQuota(entitlement: number, percentRemaining: number, resetDate: Date): number {
+		const now = new Date();
+		
+		// If we haven't reached the reset date yet, use normal calculation
+		if (now <= resetDate) {
+			return Math.max(0, entitlement * (1 - percentRemaining / 100));
+		}
+		
+		// We've passed the reset date - check if quota data looks like it's from previous period
+		// If percent_remaining is very low (< 50%), it might be stale data from previous month
+		// In a new quota period right after reset, we'd expect percent_remaining to be close to 100%
+		const normalUsed = Math.max(0, entitlement * (1 - percentRemaining / 100));
+		const usageRatio = normalUsed / entitlement;
+		
+		// If usage ratio is high (> 50%) and we're past reset date, likely showing stale data
+		// Reset to 0 as we're in a new quota period
+		if (usageRatio > 0.5) {
+			return 0;
+		}
+		
+		// Otherwise, use the normal calculation (server data is up to date)
+		return normalUsed;
 	}
 }
