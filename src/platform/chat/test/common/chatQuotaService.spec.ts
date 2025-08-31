@@ -186,5 +186,38 @@ describe('ChatQuotaService timezone handling', () => {
 		expect(quotaInfoFromService).toBeDefined();
 		expect(quotaInfoFromService.used).toBe(10); // 10% of 100
 	});
-});
+
+	it('should handle edge case: exactly at 50% threshold after reset', () => {
+		// Test the boundary condition of our 50% threshold
+		const currentTime = new Date('2024-10-01T08:00:00Z');
+		vi.setSystemTime(currentTime);
+
+		const mockHeaders: IHeaders = new Map([
+			['x-quota-snapshot-premium_interactions', 'ent=100&rem=50.0&ov=0.0&ovPerm=false&rst=2024-10-01T00:00:00Z']
+		]);
+
+		quotaService.processQuotaHeaders(mockHeaders);
+
+		// At exactly 50% usage, should use normal calculation (not reset)
+		const quotaInfoFromService = (quotaService as any)._quotaInfo;
+		expect(quotaInfoFromService).toBeDefined();
+		expect(quotaInfoFromService.used).toBe(50); // Exactly 50% usage
+	});
+
+	it('should handle edge case: just above 50% threshold after reset', () => {
+		// Test just above the 50% threshold
+		const currentTime = new Date('2024-10-01T08:00:00Z');
+		vi.setSystemTime(currentTime);
+
+		const mockHeaders: IHeaders = new Map([
+			['x-quota-snapshot-premium_interactions', 'ent=100&rem=49.0&ov=0.0&ovPerm=false&rst=2024-10-01T00:00:00Z']
+		]);
+
+		quotaService.processQuotaHeaders(mockHeaders);
+
+		// Just above 50% usage (51% used), should reset to 0 
+		const quotaInfoFromService = (quotaService as any)._quotaInfo;
+		expect(quotaInfoFromService).toBeDefined();
+		expect(quotaInfoFromService.used).toBe(0); // Should reset due to high usage
+	});
 });

@@ -124,6 +124,7 @@ export class ChatQuotaService extends Disposable implements IChatQuotaService {
 		// If usage ratio is high (> 50%) and we're past reset date, likely showing stale data
 		// Reset to 0 as we're in a new quota period
 		if (usageRatio > 0.5) {
+			console.debug(`Copilot quota: Detected stale usage data (${Math.round(usageRatio * 100)}% used) after reset date (${resetDate.toISOString()}). Resetting to 0 for new quota period.`);
 			return 0;
 		}
 		
